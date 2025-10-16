@@ -531,6 +531,16 @@
             font-size: 0.875rem;
             color: #856404;
         }
+
+        .data-status {
+            background: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            border-radius: 6px;
+            padding: 1rem;
+            margin-top: 1rem;
+            font-size: 0.875rem;
+            color: #0066cc;
+        }
     </style>
 </head>
 <body>
@@ -542,7 +552,7 @@
                     <div class="logo-icon">👤</div>
                     <div class="logo-text">
                         <h1>FaceAuth Pro</h1>
-                        <div class="subtitle">GitHub Cloud Edition - Fixed Sync</div>
+                        <div class="subtitle">GitHub Cloud Edition - Data Fixed</div>
                     </div>
                 </div>
                 <div class="current-time" id="current-time"></div>
@@ -670,6 +680,14 @@
                         <button class="btn btn-info" id="force-sync" disabled>
                             <span class="btn-text">Force Sync</span>
                         </button>
+                        <button class="btn btn-primary" id="refresh-data" disabled>
+                            <span class="btn-text">Refresh Data</span>
+                        </button>
+                    </div>
+
+                    <div class="data-status" id="data-status">
+                        <strong>Data Status:</strong>
+                        <div id="data-content">Loading local data...</div>
                     </div>
 
                     <div class="debug-info" id="debug-info" style="display: none;">
@@ -838,6 +856,7 @@
         const testConnectionBtn = document.getElementById('test-connection');
         const loadSampleBtn = document.getElementById('load-sample');
         const forceSyncBtn = document.getElementById('force-sync');
+        const refreshDataBtn = document.getElementById('refresh-data');
         const todayAttendanceList = document.getElementById('today-attendance');
         const reportResults = document.getElementById('report-results');
         const employeeGrid = document.getElementById('employee-grid');
@@ -848,10 +867,23 @@
         const checkedInEl = document.getElementById('checked-in');
         const avgHoursEl = document.getElementById('avg-hours');
         const syncStatusEl = document.getElementById('sync-status');
+        const dataStatusEl = document.getElementById('data-status');
+        const dataContentEl = document.getElementById('data-content');
         const debugInfo = document.getElementById('debug-info');
         const debugContent = document.getElementById('debug-content');
         const tabs = document.querySelectorAll('.tab');
         const tabContents = document.querySelectorAll('.tab-content');
+
+        // Update data status display
+        function updateDataStatus() {
+            const status = `
+                Employees: ${employees.length} | 
+                Attendance Records: ${attendance.length} | 
+                Face Data: ${Object.keys(faceDescriptors).length}
+                ${githubConnected ? ' | 🔗 GitHub Connected' : ' | 📱 Local Only'}
+            `;
+            dataContentEl.textContent = status;
+        }
 
         // Debug logging
         function debugLog(message) {
@@ -860,7 +892,7 @@
             debugInfo.style.display = 'block';
         }
 
-        // GitHub API Functions - FIXED VERSION
+        // GitHub API Functions
         async function githubApiCall(url, options = {}) {
             debugLog(`Making API call to: ${url}`);
             
@@ -892,7 +924,7 @@
             }
         }
 
-        // Initialize GitHub Storage - FIXED VERSION
+        // Initialize GitHub Storage
         async function initializeGitHubStorage() {
             const username = document.getElementById('github-username').value.trim();
             const token = document.getElementById('github-token').value.trim();
@@ -915,9 +947,9 @@
                 
                 // Create initial data structure with current local data
                 const initialData = {
-                    employees: employees.length > 0 ? employees : [],
-                    attendance: attendance.length > 0 ? attendance : [],
-                    faceDescriptors: Object.keys(faceDescriptors).length > 0 ? faceDescriptors : {},
+                    employees: employees,
+                    attendance: attendance,
+                    faceDescriptors: faceDescriptors,
                     initializedAt: new Date().toISOString(),
                     version: '1.0',
                     lastSync: new Date().toISOString()
@@ -945,18 +977,21 @@
                 const configToSave = {
                     username: githubConfig.username,
                     gistId: githubConfig.gistId
-                    // Don't save token for security
                 };
                 localStorage.setItem('githubConfig', JSON.stringify(configToSave));
                 
                 // Update UI
                 testConnectionBtn.disabled = false;
                 forceSyncBtn.disabled = false;
+                refreshDataBtn.disabled = false;
                 syncStatusEl.innerHTML = '<span class="status-online">●</span> GitHub Cloud Connected';
                 githubConnected = true;
                 
                 debugLog('GitHub storage initialized successfully');
                 showNotification('GitHub storage initialized successfully!', 'success');
+                
+                // Update data status
+                updateDataStatus();
                 
             } catch (error) {
                 console.error('GitHub initialization error:', error);
@@ -972,32 +1007,44 @@
                 return;
             }
 
+            // Ensure we have the latest token
+            const currentToken = document.getElementById('github-token').value.trim();
+            if (!currentToken) {
+                debugLog('No token available for loading');
+                showNotification('Please enter your GitHub token', 'error');
+                return;
+            }
+            githubConfig.token = currentToken;
+
             try {
                 debugLog('Loading data from GitHub...');
                 const gist = await githubApiCall(`/gists/${githubConfig.gistId}`);
                 const fileContent = gist.files['attendance_data.json'].content;
                 const data = JSON.parse(fileContent);
 
-                // Only update if we got valid data
-                if (data.employees) employees = data.employees;
-                if (data.attendance) attendance = data.attendance;
-                if (data.faceDescriptors) faceDescriptors = data.faceDescriptors;
+                debugLog(`Loaded data: ${data.employees?.length || 0} employees, ${data.attendance?.length || 0} records`);
+
+                // IMPORTANT: Completely replace local data with GitHub data
+                employees = data.employees || [];
+                attendance = data.attendance || [];
+                faceDescriptors = data.faceDescriptors || {};
 
                 // Save local backup
                 saveLocalData();
                 
+                // Update UI with new data
                 updateUI();
                 debugLog('Data loaded successfully from GitHub');
-                showNotification('Data loaded from GitHub', 'success');
+                showNotification(`Data loaded: ${employees.length} employees, ${attendance.length} records`, 'success');
                 
             } catch (error) {
                 console.error('Error loading data from GitHub:', error);
                 debugLog(`Load failed: ${error.message}`);
-                showNotification('Error loading data from GitHub', 'error');
+                showNotification('Error loading data from GitHub: ' + error.message, 'error');
             }
         }
 
-        // Save data to GitHub - FIXED VERSION
+        // Save data to GitHub
         async function saveDataToGitHub() {
             if (!githubConnected || !githubConfig.gistId) {
                 debugLog('Cannot save: GitHub not connected');
@@ -1059,6 +1106,15 @@
             await saveDataToGitHub();
         }
 
+        // Refresh data from GitHub
+        async function refreshData() {
+            if (!githubConnected) {
+                showNotification('GitHub not connected', 'error');
+                return;
+            }
+            await loadDataFromGitHub();
+        }
+
         // Test GitHub connection
         async function testGitHubConnection() {
             if (!githubConnected) {
@@ -1102,6 +1158,7 @@
                 if (githubConfig.gistId) {
                     testConnectionBtn.disabled = false;
                     forceSyncBtn.disabled = false;
+                    refreshDataBtn.disabled = false;
                     syncStatusEl.innerHTML = '<span class="status-online">●</span> GitHub Ready (Enter Token)';
                     githubConnected = true;
                 }
@@ -1114,24 +1171,45 @@
 
         // Load local data
         function loadLocalData() {
-            const localEmployees = localStorage.getItem('employees');
-            const localAttendance = localStorage.getItem('attendance');
-            const localFaceDescriptors = localStorage.getItem('faceDescriptors');
+            try {
+                const localEmployees = localStorage.getItem('employees');
+                const localAttendance = localStorage.getItem('attendance');
+                const localFaceDescriptors = localStorage.getItem('faceDescriptors');
 
-            if (localEmployees) employees = JSON.parse(localEmployees);
-            if (localAttendance) attendance = JSON.parse(localAttendance);
-            if (localFaceDescriptors) faceDescriptors = JSON.parse(localFaceDescriptors);
+                if (localEmployees) {
+                    employees = JSON.parse(localEmployees);
+                    debugLog(`Loaded ${employees.length} employees from local storage`);
+                }
+                if (localAttendance) {
+                    attendance = JSON.parse(localAttendance);
+                    debugLog(`Loaded ${attendance.length} attendance records from local storage`);
+                }
+                if (localFaceDescriptors) {
+                    faceDescriptors = JSON.parse(localFaceDescriptors);
+                    debugLog(`Loaded ${Object.keys(faceDescriptors).length} face descriptors from local storage`);
+                }
 
-            updateUI();
-            debugLog('Local data loaded');
+                updateUI();
+                updateDataStatus();
+                
+            } catch (error) {
+                console.error('Error loading local data:', error);
+                debugLog('Error loading local data: ' + error.message);
+            }
         }
 
         // Save local data
         function saveLocalData() {
-            localStorage.setItem('employees', JSON.stringify(employees));
-            localStorage.setItem('attendance', JSON.stringify(attendance));
-            localStorage.setItem('faceDescriptors', JSON.stringify(faceDescriptors));
-            debugLog('Local data saved');
+            try {
+                localStorage.setItem('employees', JSON.stringify(employees));
+                localStorage.setItem('attendance', JSON.stringify(attendance));
+                localStorage.setItem('faceDescriptors', JSON.stringify(faceDescriptors));
+                debugLog('Local data saved successfully');
+                updateDataStatus();
+            } catch (error) {
+                console.error('Error saving local data:', error);
+                debugLog('Error saving local data: ' + error.message);
+            }
         }
 
         // Update current time
@@ -1154,6 +1232,7 @@
             testConnectionBtn.addEventListener('click', testGitHubConnection);
             loadSampleBtn.addEventListener('click', loadSampleData);
             forceSyncBtn.addEventListener('click', forceSync);
+            refreshDataBtn.addEventListener('click', refreshData);
 
             // Tab switching
             tabs.forEach(tab => {
@@ -1173,10 +1252,6 @@
                 });
             });
         }
-
-        // [Rest of the functions remain the same as previous version...]
-        // Load BlazeFace model, camera functions, check-in/check-out, etc.
-        // These are identical to the previous working version
 
         // Load BlazeFace model
         async function loadBlazeFaceModel() {
@@ -1250,7 +1325,7 @@
             requestAnimationFrame(detectFaces);
         }
 
-        // Check in employee - UPDATED with proper GitHub sync
+        // Check in employee
         async function checkIn() {
             if (employees.length === 0) {
                 showNotification('No employees registered', 'error');
@@ -1295,7 +1370,7 @@
             showNotification(`${randomEmployee.name} checked in successfully`, 'success');
         }
 
-        // Check out employee - UPDATED with proper GitHub sync
+        // Check out employee
         async function checkOut() {
             if (employees.length === 0) {
                 showNotification('No employees registered', 'error');
@@ -1348,8 +1423,8 @@
             showNotification(`${randomEmployee.name} checked out successfully`, 'success');
         }
 
-        // Register face - UPDATED with proper GitHub sync
-        function registerFace() {
+        // Register face
+        async function registerFace() {
             const employeeId = document.getElementById('employee-id').value.trim();
             
             if (!employeeId) {
@@ -1378,11 +1453,12 @@
                     saveLocalData();
                 }
                 
+                updateUI();
                 showNotification(`Face registered for ${employee.name}`, 'success');
             }, 2000);
         }
 
-        // Add employee - UPDATED with proper GitHub sync
+        // Add employee
         async function addEmployee() {
             const name = document.getElementById('employee-name').value.trim();
             const id = document.getElementById('employee-id').value.trim();
@@ -1497,7 +1573,7 @@
             reportResults.innerHTML = html;
         }
 
-        // Load sample data - UPDATED with proper GitHub sync
+        // Load sample data
         async function loadSampleData() {
             const sampleEmployees = [
                 {
@@ -1523,9 +1599,41 @@
                 }
             ];
 
+            // Add sample attendance records
+            const now = new Date();
+            const today = now.toISOString().split('T')[0];
+            const sampleAttendance = [
+                {
+                    id: generateId(),
+                    employeeId: 'ENG001',
+                    employeeName: 'John Doe',
+                    department: 'Engineering',
+                    date: today,
+                    time: '09:00:00',
+                    timestamp: now.getTime() - (4 * 60 * 60 * 1000),
+                    type: 'in'
+                },
+                {
+                    id: generateId(),
+                    employeeId: 'SAL001',
+                    employeeName: 'Jane Smith',
+                    department: 'Sales',
+                    date: today,
+                    time: '09:15:00',
+                    timestamp: now.getTime() - (3.75 * 60 * 60 * 1000),
+                    type: 'in'
+                }
+            ];
+
             for (const employee of sampleEmployees) {
                 if (!employees.some(emp => emp.id === employee.id)) {
                     employees.push(employee);
+                }
+            }
+
+            for (const record of sampleAttendance) {
+                if (!attendance.some(att => att.id === record.id)) {
+                    attendance.push(record);
                 }
             }
 
@@ -1545,6 +1653,7 @@
             renderTodayAttendance();
             renderEmployeeGrid();
             updateCharts();
+            updateDataStatus();
         }
 
         // Update statistics
@@ -1632,7 +1741,7 @@
         // Render employee grid
         function renderEmployeeGrid() {
             if (employees.length === 0) {
-                employeeGrid.innerHTML = '<p style="text-align: center; padding: 2rem; color: var(--gray);">No employees registered</p>';
+                employeeGrid.innerHTML = '<p style="text-align: center; padding: 2rem; color: var(--gray);">No employees registered. Add employees or load sample data.</p>';
                 return;
             }
 
@@ -1717,7 +1826,6 @@
                 initializeCharts();
                 return;
             }
-            // Chart data would be updated based on actual attendance data
         }
 
         // Export data
@@ -1740,7 +1848,7 @@
             showNotification('Data exported successfully', 'success');
         }
 
-        // Clear data - UPDATED with proper GitHub sync
+        // Clear data
         async function clearData() {
             if (!confirm('Are you sure you want to clear all data? This cannot be undone.')) {
                 return;
