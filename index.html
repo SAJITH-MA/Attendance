@@ -3,15 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Face Recognition Attendance System</title>
+    <title>Cloud Face Recognition Attendance System</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
             --primary: #4361ee;
             --secondary: #3f37c9;
             --success: #4cc9f0;
             --danger: #f72585;
+            --warning: #f8961e;
             --light: #f8f9fa;
             --dark: #212529;
             --gray: #6c757d;
@@ -32,7 +35,7 @@
         }
         
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
             padding: 20px;
         }
@@ -50,6 +53,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            padding: 0 2rem;
         }
         
         .logo {
@@ -73,7 +77,7 @@
             gap: 2rem;
         }
         
-        @media (max-width: 768px) {
+        @media (max-width: 1024px) {
             .main-content {
                 grid-template-columns: 1fr;
             }
@@ -123,6 +127,8 @@
             align-items: center;
             background: rgba(0, 0, 0, 0.5);
             color: white;
+            text-align: center;
+            padding: 1rem;
         }
         
         .btn {
@@ -153,6 +159,11 @@
         
         .btn-danger {
             background: var(--danger);
+            color: white;
+        }
+        
+        .btn-warning {
+            background: var(--warning);
             color: white;
         }
         
@@ -240,8 +251,15 @@
         
         .stats {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: repeat(4, 1fr);
             gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        @media (max-width: 768px) {
+            .stats {
+                grid-template-columns: repeat(2, 1fr);
+            }
         }
         
         .stat-card {
@@ -267,6 +285,7 @@
             display: flex;
             border-bottom: 1px solid #ddd;
             margin-bottom: 1rem;
+            flex-wrap: wrap;
         }
         
         .tab {
@@ -334,12 +353,103 @@
             background: var(--danger);
         }
         
+        .notification.warning {
+            background: var(--warning);
+        }
+        
         footer {
             text-align: center;
             margin-top: 2rem;
             padding: 1rem;
             color: var(--gray);
             font-size: 0.9rem;
+        }
+        
+        .charts-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        
+        @media (max-width: 768px) {
+            .charts-container {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .chart-card {
+            background: white;
+            border-radius: 8px;
+            padding: 1rem;
+            box-shadow: var(--shadow);
+        }
+        
+        .admin-panel {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .admin-controls {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+        
+        .employee-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .employee-card {
+            background: white;
+            border-radius: 8px;
+            padding: 1rem;
+            box-shadow: var(--shadow);
+            text-align: center;
+        }
+        
+        .employee-avatar {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: var(--primary);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            margin: 0 auto 0.5rem;
+        }
+        
+        .cloud-indicator {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.8rem;
+            color: var(--success);
+            margin-top: 0.5rem;
+        }
+        
+        .sync-status {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.8rem;
+            margin-top: 0.5rem;
+        }
+        
+        .synced {
+            color: var(--success);
+        }
+        
+        .pending {
+            color: var(--warning);
         }
     </style>
 </head>
@@ -349,7 +459,7 @@
             <div class="header-content">
                 <div class="logo">
                     <div class="logo-icon">👤</div>
-                    <h1>Face Recognition Attendance System</h1>
+                    <h1>Cloud Face Recognition Attendance System</h1>
                 </div>
                 <div class="current-time" id="current-time"></div>
             </div>
@@ -364,33 +474,47 @@
                 <div class="stat-value" id="present-today">0</div>
                 <div class="stat-label">Present Today</div>
             </div>
+            <div class="stat-card">
+                <div class="stat-value" id="checked-in">0</div>
+                <div class="stat-label">Currently Checked In</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="avg-hours">0</div>
+                <div class="stat-label">Avg. Hours Today</div>
+            </div>
         </div>
         
         <div class="main-content">
             <div class="left-column">
                 <div class="card">
-                    <h2 class="card-title">Face Detection</h2>
+                    <h2 class="card-title">Face Recognition</h2>
                     <div class="video-container">
                         <video id="video" autoplay playsinline></video>
                         <div class="overlay" id="overlay">
-                            <p>Camera access required for face detection</p>
+                            <p>Camera access required for face recognition</p>
                             <button class="btn btn-primary" id="start-camera">
                                 <span class="btn-text">Start Camera</span>
                             </button>
                         </div>
                     </div>
-                    <div class="detection-controls">
+                    <div class="detection-controls" style="display: flex; gap: 10px; margin-top: 1rem;">
                         <button class="btn btn-primary" id="check-in" disabled>
                             <span class="btn-text">Check In</span>
                         </button>
                         <button class="btn btn-danger" id="check-out" disabled>
                             <span class="btn-text">Check Out</span>
                         </button>
+                        <button class="btn btn-warning" id="register-face" disabled>
+                            <span class="btn-text">Register Face</span>
+                        </button>
+                    </div>
+                    <div class="sync-status" id="sync-status">
+                        <span class="pending">●</span> Local data - Sync with cloud when online
                     </div>
                 </div>
                 
                 <div class="card">
-                    <h2 class="card-title">Add New Employee</h2>
+                    <h2 class="card-title">Employee Registration</h2>
                     <div class="attendance-form">
                         <div class="form-group">
                             <label for="employee-name">Full Name</label>
@@ -411,8 +535,12 @@
                                 <option value="Finance">Finance</option>
                             </select>
                         </div>
+                        <div class="form-group">
+                            <label for="employee-position">Position</label>
+                            <input type="text" id="employee-position" placeholder="Enter position">
+                        </div>
                         <button class="btn btn-primary" id="add-employee">
-                            <span class="btn-text">Add Employee</span>
+                            <span class="btn-text">Add Employee to Cloud</span>
                         </button>
                     </div>
                 </div>
@@ -423,6 +551,8 @@
                     <div class="tabs">
                         <div class="tab active" data-tab="today">Today's Attendance</div>
                         <div class="tab" data-tab="reports">Attendance Reports</div>
+                        <div class="tab" data-tab="analytics">Analytics</div>
+                        <div class="tab" data-tab="admin">Admin Panel</div>
                     </div>
                     
                     <div class="tab-content active" id="today-tab">
@@ -434,9 +564,22 @@
                     
                     <div class="tab-content" id="reports-tab">
                         <h2 class="card-title">Attendance Reports</h2>
-                        <div class="form-group">
-                            <label for="report-date">Select Date</label>
-                            <input type="date" id="report-date">
+                        <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                            <div class="form-group">
+                                <label for="report-date">Select Date</label>
+                                <input type="date" id="report-date">
+                            </div>
+                            <div class="form-group">
+                                <label for="report-department">Department</label>
+                                <select id="report-department">
+                                    <option value="all">All Departments</option>
+                                    <option value="Engineering">Engineering</option>
+                                    <option value="Sales">Sales</option>
+                                    <option value="Marketing">Marketing</option>
+                                    <option value="HR">Human Resources</option>
+                                    <option value="Finance">Finance</option>
+                                </select>
+                            </div>
                         </div>
                         <button class="btn btn-primary" id="generate-report">
                             <span class="btn-text">Generate Report</span>
@@ -445,12 +588,61 @@
                             <!-- Report results will be populated here -->
                         </div>
                     </div>
+                    
+                    <div class="tab-content" id="analytics-tab">
+                        <h2 class="card-title">Attendance Analytics</h2>
+                        <div class="charts-container">
+                            <div class="chart-card">
+                                <canvas id="attendanceChart"></canvas>
+                            </div>
+                            <div class="chart-card">
+                                <canvas id="departmentChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="charts-container">
+                            <div class="chart-card">
+                                <canvas id="hoursChart"></canvas>
+                            </div>
+                            <div class="chart-card">
+                                <canvas id="monthlyChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="tab-content" id="admin-tab">
+                        <h2 class="card-title">Admin Panel</h2>
+                        <div class="admin-panel">
+                            <p>Cloud Database Management</p>
+                            <div class="admin-controls">
+                                <button class="btn btn-primary" id="sync-data">
+                                    <span class="btn-text">Sync with Cloud</span>
+                                </button>
+                                <button class="btn btn-success" id="export-data">
+                                    <span class="btn-text">Export Data</span>
+                                </button>
+                                <button class="btn btn-warning" id="backup-data">
+                                    <span class="btn-text">Backup to Cloud</span>
+                                </button>
+                                <button class="btn btn-danger" id="clear-data">
+                                    <span class="btn-text">Clear Local Data</span>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <h3 class="card-title" style="margin-top: 1.5rem;">Registered Employees</h3>
+                        <div class="employee-grid" id="employee-grid">
+                            <!-- Employee cards will be populated here -->
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
         
         <footer>
-            <p>Face Recognition Attendance System &copy; 2023 | Ready for deployment on Netlify</p>
+            <p>Cloud Face Recognition Attendance System &copy; 2023 | Ready for deployment on Netlify</p>
+            <div class="cloud-indicator">
+                <span>☁️</span> Cloud Database Connected
+            </div>
         </footer>
     </div>
     
@@ -463,14 +655,23 @@
         const startCameraBtn = document.getElementById('start-camera');
         const checkInBtn = document.getElementById('check-in');
         const checkOutBtn = document.getElementById('check-out');
+        const registerFaceBtn = document.getElementById('register-face');
         const addEmployeeBtn = document.getElementById('add-employee');
         const generateReportBtn = document.getElementById('generate-report');
+        const syncDataBtn = document.getElementById('sync-data');
+        const exportDataBtn = document.getElementById('export-data');
+        const backupDataBtn = document.getElementById('backup-data');
+        const clearDataBtn = document.getElementById('clear-data');
         const todayAttendanceList = document.getElementById('today-attendance');
         const reportResults = document.getElementById('report-results');
+        const employeeGrid = document.getElementById('employee-grid');
         const notification = document.getElementById('notification');
         const currentTimeEl = document.getElementById('current-time');
         const totalEmployeesEl = document.getElementById('total-employees');
         const presentTodayEl = document.getElementById('present-today');
+        const checkedInEl = document.getElementById('checked-in');
+        const avgHoursEl = document.getElementById('avg-hours');
+        const syncStatusEl = document.getElementById('sync-status');
         const tabs = document.querySelectorAll('.tab');
         const tabContents = document.querySelectorAll('.tab-content');
         
@@ -479,6 +680,8 @@
         let isCameraOn = false;
         let employees = JSON.parse(localStorage.getItem('employees')) || [];
         let attendance = JSON.parse(localStorage.getItem('attendance')) || [];
+        let faceDescriptors = JSON.parse(localStorage.getItem('faceDescriptors')) || {};
+        let charts = {};
         
         // Initialize the application
         function init() {
@@ -488,11 +691,16 @@
             setupEventListeners();
             updateStats();
             renderTodayAttendance();
+            renderEmployeeGrid();
+            initializeCharts();
             
             // Try to automatically start camera if previously allowed
             if (localStorage.getItem('cameraAllowed') === 'true') {
                 startCamera();
             }
+            
+            // Simulate cloud connection
+            simulateCloudConnection();
         }
         
         // Update current time display
@@ -506,8 +714,13 @@
             startCameraBtn.addEventListener('click', startCamera);
             checkInBtn.addEventListener('click', checkIn);
             checkOutBtn.addEventListener('click', checkOut);
+            registerFaceBtn.addEventListener('click', registerFace);
             addEmployeeBtn.addEventListener('click', addEmployee);
             generateReportBtn.addEventListener('click', generateReport);
+            syncDataBtn.addEventListener('click', syncWithCloud);
+            exportDataBtn.addEventListener('click', exportData);
+            backupDataBtn.addEventListener('click', backupToCloud);
+            clearDataBtn.addEventListener('click', clearLocalData);
             
             // Tab switching
             tabs.forEach(tab => {
@@ -523,6 +736,11 @@
                         content.classList.remove('active');
                         if (content.id === `${tabId}-tab`) {
                             content.classList.add('active');
+                            
+                            // Refresh charts when analytics tab is activated
+                            if (tabId === 'analytics') {
+                                updateCharts();
+                            }
                         }
                     });
                 });
@@ -535,6 +753,7 @@
                 showNotification('Loading face detection model...', 'success');
                 model = await blazeface.load();
                 showNotification('Face detection model loaded successfully', 'success');
+                registerFaceBtn.disabled = false;
             } catch (error) {
                 console.error('Error loading model:', error);
                 showNotification('Error loading face detection model', 'error');
@@ -633,8 +852,10 @@
                 id: generateId(),
                 employeeId: randomEmployee.id,
                 employeeName: randomEmployee.name,
+                department: randomEmployee.department,
                 date: today,
                 time: now.toTimeString().split(' ')[0],
+                timestamp: now.getTime(),
                 type: 'in'
             });
             
@@ -645,6 +866,9 @@
             renderTodayAttendance();
             updateStats();
             showNotification(`${randomEmployee.name} checked in successfully`, 'success');
+            
+            // Simulate cloud sync
+            simulateCloudSync('check-in', randomEmployee.name);
         }
         
         // Check out an employee
@@ -684,8 +908,10 @@
                 id: generateId(),
                 employeeId: randomEmployee.id,
                 employeeName: randomEmployee.name,
+                department: randomEmployee.department,
                 date: today,
                 time: now.toTimeString().split(' ')[0],
+                timestamp: now.getTime(),
                 type: 'out'
             });
             
@@ -696,6 +922,43 @@
             renderTodayAttendance();
             updateStats();
             showNotification(`${randomEmployee.name} checked out successfully`, 'success');
+            
+            // Simulate cloud sync
+            simulateCloudSync('check-out', randomEmployee.name);
+        }
+        
+        // Register face for an employee
+        function registerFace() {
+            const employeeId = document.getElementById('employee-id').value.trim();
+            
+            if (!employeeId) {
+                showNotification('Please enter an employee ID first', 'error');
+                return;
+            }
+            
+            const employee = employees.find(emp => emp.id === employeeId);
+            
+            if (!employee) {
+                showNotification('Employee not found. Please add employee first.', 'error');
+                return;
+            }
+            
+            // Simulate face registration
+            showNotification(`Face registration started for ${employee.name}`, 'success');
+            
+            // Simulate processing
+            setTimeout(() => {
+                faceDescriptors[employeeId] = {
+                    employeeId: employeeId,
+                    registeredAt: new Date().toISOString()
+                };
+                
+                localStorage.setItem('faceDescriptors', JSON.stringify(faceDescriptors));
+                showNotification(`Face registered successfully for ${employee.name}`, 'success');
+                
+                // Simulate cloud sync
+                simulateCloudSync('face-registration', employee.name);
+            }, 2000);
         }
         
         // Add a new employee
@@ -703,8 +966,9 @@
             const name = document.getElementById('employee-name').value.trim();
             const id = document.getElementById('employee-id').value.trim();
             const department = document.getElementById('employee-department').value;
+            const position = document.getElementById('employee-position').value.trim();
             
-            if (!name || !id || !department) {
+            if (!name || !id || !department || !position) {
                 showNotification('Please fill in all fields', 'error');
                 return;
             }
@@ -720,6 +984,7 @@
                 id,
                 name,
                 department,
+                position,
                 registeredDate: new Date().toISOString().split('T')[0]
             });
             
@@ -730,22 +995,32 @@
             document.getElementById('employee-name').value = '';
             document.getElementById('employee-id').value = '';
             document.getElementById('employee-department').value = '';
+            document.getElementById('employee-position').value = '';
             
             // Update UI
             updateStats();
+            renderEmployeeGrid();
             showNotification(`Employee ${name} added successfully`, 'success');
+            
+            // Simulate cloud sync
+            simulateCloudSync('employee-added', name);
         }
         
         // Generate attendance report
         function generateReport() {
             const date = document.getElementById('report-date').value;
+            const department = document.getElementById('report-department').value;
             
             if (!date) {
                 showNotification('Please select a date', 'error');
                 return;
             }
             
-            const records = attendance.filter(record => record.date === date);
+            let records = attendance.filter(record => record.date === date);
+            
+            if (department !== 'all') {
+                records = records.filter(record => record.department === department);
+            }
             
             if (records.length === 0) {
                 reportResults.innerHTML = '<p>No attendance records found for this date</p>';
@@ -758,15 +1033,25 @@
                 if (!employeeRecords[record.employeeId]) {
                     employeeRecords[record.employeeId] = {
                         name: record.employeeName,
+                        department: record.department,
                         checkIn: null,
-                        checkOut: null
+                        checkOut: null,
+                        hours: 0
                     };
                 }
                 
                 if (record.type === 'in') {
                     employeeRecords[record.employeeId].checkIn = record.time;
+                    employeeRecords[record.employeeId].checkInTimestamp = record.timestamp;
                 } else {
                     employeeRecords[record.employeeId].checkOut = record.time;
+                    employeeRecords[record.employeeId].checkOutTimestamp = record.timestamp;
+                    
+                    // Calculate hours worked
+                    if (employeeRecords[record.employeeId].checkInTimestamp) {
+                        const hours = (record.timestamp - employeeRecords[record.employeeId].checkInTimestamp) / (1000 * 60 * 60);
+                        employeeRecords[record.employeeId].hours = hours.toFixed(2);
+                    }
                 }
             });
             
@@ -778,11 +1063,12 @@
                     <div class="attendance-item">
                         <div class="user-info">
                             <div class="user-name">${record.name}</div>
-                            <div class="user-id">ID: ${employeeId}</div>
+                            <div class="user-id">ID: ${employeeId} | Dept: ${record.department}</div>
                         </div>
                         <div class="attendance-details">
                             <div>Check In: ${record.checkIn || 'N/A'}</div>
                             <div>Check Out: ${record.checkOut || 'N/A'}</div>
+                            ${record.hours > 0 ? `<div>Hours: ${record.hours}</div>` : ''}
                         </div>
                     </div>
                 `;
@@ -807,7 +1093,7 @@
                     <div class="attendance-item">
                         <div class="user-info">
                             <div class="user-name">${record.employeeName}</div>
-                            <div class="user-id">ID: ${record.employeeId}</div>
+                            <div class="user-id">ID: ${record.employeeId} | Dept: ${record.department}</div>
                         </div>
                         <div class="attendance-time">${record.time}</div>
                         <div class="status ${record.type === 'in' ? 'status-in' : 'status-out'}">
@@ -820,18 +1106,358 @@
             todayAttendanceList.innerHTML = html;
         }
         
+        // Render employee grid
+        function renderEmployeeGrid() {
+            if (employees.length === 0) {
+                employeeGrid.innerHTML = '<p>No employees registered</p>';
+                return;
+            }
+            
+            let html = '';
+            employees.forEach(employee => {
+                const hasFace = faceDescriptors[employee.id] ? 'Face Registered' : 'No Face Data';
+                const faceStatusClass = faceDescriptors[employee.id] ? 'synced' : 'pending';
+                
+                html += `
+                    <div class="employee-card">
+                        <div class="employee-avatar">${employee.name.charAt(0)}</div>
+                        <div class="user-name">${employee.name}</div>
+                        <div class="user-id">${employee.id}</div>
+                        <div>${employee.department}</div>
+                        <div>${employee.position}</div>
+                        <div class="sync-status ${faceStatusClass}">
+                            <span>●</span> ${hasFace}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            employeeGrid.innerHTML = html;
+        }
+        
         // Update statistics
         function updateStats() {
             totalEmployeesEl.textContent = employees.length;
             
             const today = new Date().toISOString().split('T')[0];
+            const todayRecords = attendance.filter(record => record.date === today);
+            
             const presentToday = new Set(
-                attendance
-                    .filter(record => record.date === today && record.type === 'in')
+                todayRecords
+                    .filter(record => record.type === 'in')
                     .map(record => record.employeeId)
             ).size;
             
             presentTodayEl.textContent = presentToday;
+            
+            // Calculate currently checked in
+            const checkedIn = new Set();
+            const checkedOut = new Set();
+            
+            todayRecords.forEach(record => {
+                if (record.type === 'in') {
+                    checkedIn.add(record.employeeId);
+                } else {
+                    checkedOut.add(record.employeeId);
+                }
+            });
+            
+            // Employees who checked in but not out
+            const currentlyCheckedIn = [...checkedIn].filter(id => !checkedOut.has(id));
+            checkedInEl.textContent = currentlyCheckedIn.length;
+            
+            // Calculate average hours
+            const employeeHours = {};
+            todayRecords.forEach(record => {
+                if (!employeeHours[record.employeeId]) {
+                    employeeHours[record.employeeId] = { checkIn: null, checkOut: null };
+                }
+                
+                if (record.type === 'in') {
+                    employeeHours[record.employeeId].checkIn = record.timestamp;
+                } else {
+                    employeeHours[record.employeeId].checkOut = record.timestamp;
+                }
+            });
+            
+            let totalHours = 0;
+            let count = 0;
+            
+            Object.values(employeeHours).forEach(({ checkIn, checkOut }) => {
+                if (checkIn && checkOut) {
+                    totalHours += (checkOut - checkIn) / (1000 * 60 * 60);
+                    count++;
+                }
+            });
+            
+            const avgHours = count > 0 ? (totalHours / count).toFixed(1) : 0;
+            avgHoursEl.textContent = avgHours;
+        }
+        
+        // Initialize charts
+        function initializeCharts() {
+            const attendanceCtx = document.getElementById('attendanceChart').getContext('2d');
+            const departmentCtx = document.getElementById('departmentChart').getContext('2d');
+            const hoursCtx = document.getElementById('hoursChart').getContext('2d');
+            const monthlyCtx = document.getElementById('monthlyChart').getContext('2d');
+            
+            charts.attendance = new Chart(attendanceCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Present Employees',
+                        data: [],
+                        backgroundColor: 'rgba(67, 97, 238, 0.7)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Weekly Attendance'
+                        }
+                    }
+                }
+            });
+            
+            charts.department = new Chart(departmentCtx, {
+                type: 'pie',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        data: [],
+                        backgroundColor: [
+                            'rgba(67, 97, 238, 0.7)',
+                            'rgba(76, 201, 240, 0.7)',
+                            'rgba(247, 37, 133, 0.7)',
+                            'rgba(248, 150, 30, 0.7)',
+                            'rgba(106, 76, 147, 0.7)'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Attendance by Department'
+                        }
+                    }
+                }
+            });
+            
+            charts.hours = new Chart(hoursCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Average Hours Worked',
+                        data: [],
+                        borderColor: 'rgba(67, 97, 238, 1)',
+                        backgroundColor: 'rgba(67, 97, 238, 0.1)',
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Average Working Hours'
+                        }
+                    }
+                }
+            });
+            
+            charts.monthly = new Chart(monthlyCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Present',
+                        data: [],
+                        backgroundColor: 'rgba(67, 97, 238, 0.7)'
+                    }, {
+                        label: 'Absent',
+                        data: [],
+                        backgroundColor: 'rgba(247, 37, 133, 0.7)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Monthly Attendance Overview'
+                        }
+                    }
+                }
+            });
+            
+            updateCharts();
+        }
+        
+        // Update charts with current data
+        function updateCharts() {
+            // Weekly attendance data
+            const last7Days = [...Array(7)].map((_, i) => {
+                const d = new Date();
+                d.setDate(d.getDate() - i);
+                return d.toISOString().split('T')[0];
+            }).reverse();
+            
+            const weeklyData = last7Days.map(date => {
+                const dayRecords = attendance.filter(record => record.date === date);
+                return new Set(dayRecords.filter(r => r.type === 'in').map(r => r.employeeId)).size;
+            });
+            
+            charts.attendance.data.labels = last7Days.map(d => new Date(d).toLocaleDateString('en-US', { weekday: 'short' }));
+            charts.attendance.data.datasets[0].data = weeklyData;
+            charts.attendance.update();
+            
+            // Department data
+            const deptCount = {};
+            const today = new Date().toISOString().split('T')[0];
+            const todayPresent = new Set(
+                attendance
+                    .filter(record => record.date === today && record.type === 'in')
+                    .map(record => record.employeeId)
+            );
+            
+            employees.forEach(emp => {
+                if (todayPresent.has(emp.id)) {
+                    deptCount[emp.department] = (deptCount[emp.department] || 0) + 1;
+                }
+            });
+            
+            charts.department.data.labels = Object.keys(deptCount);
+            charts.department.data.datasets[0].data = Object.values(deptCount);
+            charts.department.update();
+            
+            // Hours data (last 7 days)
+            const hoursData = last7Days.map(date => {
+                const dayRecords = attendance.filter(record => record.date === date);
+                const employeeHours = {};
+                
+                dayRecords.forEach(record => {
+                    if (!employeeHours[record.employeeId]) {
+                        employeeHours[record.employeeId] = { checkIn: null, checkOut: null };
+                    }
+                    
+                    if (record.type === 'in') {
+                        employeeHours[record.employeeId].checkIn = record.timestamp;
+                    } else {
+                        employeeHours[record.employeeId].checkOut = record.timestamp;
+                    }
+                });
+                
+                let totalHours = 0;
+                let count = 0;
+                
+                Object.values(employeeHours).forEach(({ checkIn, checkOut }) => {
+                    if (checkIn && checkOut) {
+                        totalHours += (checkOut - checkIn) / (1000 * 60 * 60);
+                        count++;
+                    }
+                });
+                
+                return count > 0 ? (totalHours / count).toFixed(1) : 0;
+            });
+            
+            charts.hours.data.labels = last7Days.map(d => new Date(d).toLocaleDateString('en-US', { weekday: 'short' }));
+            charts.hours.data.datasets[0].data = hoursData;
+            charts.hours.update();
+            
+            // Monthly data
+            const currentMonth = new Date().getMonth();
+            const monthlyLabels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
+            const presentData = [22, 24, 20, 18]; // Mock data
+            const absentData = [3, 1, 5, 7]; // Mock data
+            
+            charts.monthly.data.labels = monthlyLabels;
+            charts.monthly.data.datasets[0].data = presentData;
+            charts.monthly.data.datasets[1].data = absentData;
+            charts.monthly.update();
+        }
+        
+        // Simulate cloud connection
+        function simulateCloudConnection() {
+            // In a real application, this would check connection to cloud database
+            setTimeout(() => {
+                syncStatusEl.innerHTML = '<span class="synced">●</span> Connected to cloud database';
+                syncStatusEl.classList.remove('pending');
+                syncStatusEl.classList.add('synced');
+            }, 2000);
+        }
+        
+        // Simulate cloud sync
+        function simulateCloudSync(action, employeeName) {
+            showNotification(`Syncing ${action} for ${employeeName} with cloud...`, 'warning');
+            
+            setTimeout(() => {
+                showNotification(`Data synced successfully with cloud database`, 'success');
+            }, 1500);
+        }
+        
+        // Sync with cloud
+        function syncWithCloud() {
+            showNotification('Syncing all data with cloud database...', 'warning');
+            
+            // Simulate API call
+            setTimeout(() => {
+                showNotification('All data synchronized with cloud successfully', 'success');
+            }, 2000);
+        }
+        
+        // Export data
+        function exportData() {
+            const data = {
+                employees: employees,
+                attendance: attendance,
+                faceDescriptors: faceDescriptors,
+                exportedAt: new Date().toISOString()
+            };
+            
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "attendance_data_" + new Date().toISOString().split('T')[0] + ".json");
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+            
+            showNotification('Data exported successfully', 'success');
+        }
+        
+        // Backup to cloud
+        function backupToCloud() {
+            showNotification('Creating cloud backup...', 'warning');
+            
+            setTimeout(() => {
+                showNotification('Backup created successfully in cloud storage', 'success');
+            }, 2000);
+        }
+        
+        // Clear local data
+        function clearLocalData() {
+            if (confirm('Are you sure you want to clear all local data? This action cannot be undone.')) {
+                localStorage.removeItem('employees');
+                localStorage.removeItem('attendance');
+                localStorage.removeItem('faceDescriptors');
+                
+                employees = [];
+                attendance = [];
+                faceDescriptors = {};
+                
+                updateStats();
+                renderTodayAttendance();
+                renderEmployeeGrid();
+                updateCharts();
+                
+                showNotification('All local data cleared successfully', 'success');
+            }
         }
         
         // Show notification
